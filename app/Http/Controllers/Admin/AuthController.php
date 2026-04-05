@@ -30,6 +30,7 @@ class AuthController extends Controller
             return back()->withErrors(['username' => 'Неверный логин или пароль.']);
         }
 
+        $request->session()->regenerate(true);
         $request->session()->put('admin_auth', true);
 
         return redirect()->route('admin.channels');
@@ -37,7 +38,8 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        $request->session()->forget('admin_auth');
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect()->route('admin.login');
     }
