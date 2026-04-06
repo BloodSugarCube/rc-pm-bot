@@ -45,7 +45,7 @@ class DailyPollService
                     continue;
                 }
 
-                $body = $morningLine."\n\n".$fact->body;
+                $body = $morningLine."\n".$fact->body;
                 $msg = $this->rocket->sendMessage($channel->rocket_room_id, $body);
 
                 $mid = (string) ($msg['_id'] ?? '');
