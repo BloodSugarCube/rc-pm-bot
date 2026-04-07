@@ -31,6 +31,7 @@ return [
         'morning_poll_at' => env('BOT_SCHEDULE_MORNING_POLL_AT', '07:30'),
         'morning_reminder_at' => env('BOT_SCHEDULE_MORNING_REMINDER_AT', '09:30'),
         'day_poll_at' => env('BOT_SCHEDULE_DAY_POLL_AT', '12:30'),
+        'day_reminder_at' => env('BOT_SCHEDULE_DAY_REMINDER_AT', '13:30'),
         'export_at' => env('BOT_SCHEDULE_EXPORT_AT', '19:00'),
     ],
 

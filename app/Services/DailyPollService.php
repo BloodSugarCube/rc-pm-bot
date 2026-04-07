@@ -267,18 +267,123 @@ class DailyPollService
                 }
 
                 $tmid = $session->morning_message_id;
+                $tagPart = '@all'; // $this->channelTeamTagsLine($channel);
+                $text = trim($tagPart.' '.$dayLine);
+
+                $msg = $this->rocket->sendMessage($channel->rocket_room_id, $text, $tmid);
+                $mid = (string) ($msg['_id'] ?? '');
+                if ($mid === '') {
+                    throw new RocketChatException('Day poll: missing message id in API response.');
+                }
+
+                $session->update([
+                    'day_poll_sent' => true,
+                    'day_message_id' => $mid,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Day poll failed', [
+                    'channel_id' => $channel->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    public function runDayReminders(string $timezone): void
+    {
+        $today = $this->today($timezone)->toDateString();
+        $botId = $this->rocket->getBotRocketUserId();
+
+        foreach (PollChannel::query()->pollActive()->get() as $channel) {
+            try {
+                $session = DailyPollSession::query()
+                    ->where('poll_channel_id', $channel->id)
+                    ->where('poll_date', $today)
+                    ->where('day_poll_sent', true)
+                    ->whereNotNull('day_message_id')
+                    ->where('day_reminder_sent', false)
+                    ->first();
+
+                if (! $session) {
+                    continue;
+                }
+
+                $expectedMap = $this->expectedRespondersMapForChannel($channel);
+                if ($expectedMap === []) {
+                    Log::info('Дневное напоминание пропущено: в канале пусто поле «Теги команд» или не удалось получить участников (teams.members / логины).', [
+                        'channel_id' => $channel->id,
+                    ]);
+                    $session->update(['day_reminder_sent' => true]);
+
+                    continue;
+                }
+
+                $thread = $this->rocket->getThreadMessages($session->morning_message_id, 100);
+                $responded = $this->collectRespondedUsernamesAfterMessage(
+                    $thread,
+                    (string) $session->day_message_id,
+                    $botId,
+                );
+
+                $absentDisplay = [];
+                foreach ($expectedMap as $lower => $display) {
+                    if (! in_array($lower, $responded, true)) {
+                        $absentDisplay[] = $display;
+                    }
+                }
+
+                if ($absentDisplay === []) {
+                    $session->update(['day_reminder_sent' => true]);
+
+                    continue;
+                }
+
+                $mentionsPayload = [];
+                $mentionParts = [];
+                foreach ($absentDisplay as $display) {
+                    $rcUser = $this->rocket->getUserByUsername($display);
+                    if ($rcUser !== null) {
+                        $row = [
+                            '_id' => $rcUser['_id'],
+                            'username' => $rcUser['username'],
+                        ];
+                        if (($rcUser['name'] ?? '') !== '') {
+                            $row['name'] = $rcUser['name'];
+                        }
+                        $mentionsPayload[] = $row;
+                        $mentionParts[] = '@'.$rcUser['username'];
+                    } else {
+                        $mentionParts[] = '@'.ltrim(trim($display), '@');
+                    }
+                }
+
+                if ($mentionsPayload === []) {
+                    Log::warning('Day reminder: users.info did not resolve Rocket.Chat ids; mentions may not notify', [
+                        'channel_id' => $channel->id,
+                        'usernames' => $absentDisplay,
+                    ]);
+                }
+
                 $permalink = $this->rocket->buildRoomMessagePermalink(
                     $channel->room_type,
                     $channel->name,
-                    $tmid,
+                    (string) $session->day_message_id,
                 );
-                $tagPart = '@all'; // $this->channelTeamTagsLine($channel);
-                $text = '[ ]('.$permalink.")\n".trim($tagPart.' '.$dayLine);
 
-                $this->rocket->sendMessage($channel->rocket_room_id, $text, $tmid);
-                $session->update(['day_poll_sent' => true]);
+                $mentionLine = implode(' ', $mentionParts);
+                $reminder = '[ ]('.$permalink.")\n".$mentionLine;
+
+                $this->rocket->sendMessage(
+                    $channel->rocket_room_id,
+                    $reminder,
+                    $session->morning_message_id,
+                    null,
+                    $mentionsPayload !== [] ? $mentionsPayload : null,
+                );
+
+                $session->update(['day_reminder_sent' => true]);
             } catch (\Throwable $e) {
-                Log::error('Day poll failed', [
+                Log::error('Day reminder failed', [
                     'channel_id' => $channel->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -375,5 +480,90 @@ class DailyPollService
         }
 
         return array_keys($seen);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $threadMessages
+     * @return list<string> lowercase usernames
+     */
+    private function collectRespondedUsernamesAfterMessage(array $threadMessages, string $afterMessageId, ?string $botId): array
+    {
+        $afterTs = null;
+        foreach ($threadMessages as $m) {
+            if (! is_array($m)) {
+                continue;
+            }
+            if ((string) ($m['_id'] ?? '') !== $afterMessageId) {
+                continue;
+            }
+            $afterTs = $this->messageTimestamp($m);
+            break;
+        }
+
+        if ($afterTs === null) {
+            return [];
+        }
+
+        $seen = [];
+        foreach ($threadMessages as $m) {
+            if (! is_array($m)) {
+                continue;
+            }
+            $id = (string) ($m['_id'] ?? '');
+            if ($id === '' || $id === $afterMessageId) {
+                continue;
+            }
+            if (isset($m['t']) && is_string($m['t']) && $m['t'] !== '') {
+                continue;
+            }
+            $uid = (string) ($m['u']['_id'] ?? '');
+            if ($botId !== null && $uid === $botId) {
+                continue;
+            }
+            $ts = $this->messageTimestamp($m);
+            if ($ts === null || $ts <= $afterTs) {
+                continue;
+            }
+            $uname = Str::lower(trim((string) ($m['u']['username'] ?? '')));
+            if ($uname === '') {
+                continue;
+            }
+            $msgText = trim((string) ($m['msg'] ?? ''));
+            $hasAttachments = ! empty($m['attachments']) && is_array($m['attachments']) && count($m['attachments']) > 0;
+            $hasFiles = ! empty($m['files']) && is_array($m['files']) && count($m['files']) > 0;
+            if ($msgText === '' && ! $hasAttachments && ! $hasFiles) {
+                continue;
+            }
+            $seen[$uname] = true;
+        }
+
+        return array_keys($seen);
+    }
+
+    private function messageTimestamp(array $message): ?int
+    {
+        $ts = $message['ts'] ?? null;
+
+        if (is_array($ts) && array_key_exists('$date', $ts)) {
+            $ts = $ts['$date'];
+        }
+
+        if ($ts instanceof \DateTimeInterface) {
+            return $ts->getTimestamp();
+        }
+
+        if (is_numeric($ts)) {
+            return (int) $ts;
+        }
+
+        if (! is_string($ts) || trim($ts) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($ts)->getTimestamp();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }

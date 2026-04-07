@@ -7,11 +7,11 @@ use App\Services\DailyPollService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 
-class BotSendDayPollCommand extends Command
+class BotSendDayReminderCommand extends Command
 {
-    protected $signature = 'bot:day-poll';
+    protected $signature = 'bot:day-reminder';
 
-    protected $description = 'Дневной опрос в том же треде (без пересылки утреннего сообщения)';
+    protected $description = 'Напоминание в треде дневного опроса с пересылкой и тегами отсутствующих';
 
     public function handle(DailyPollService $polls): int
     {
@@ -22,8 +22,8 @@ class BotSendDayPollCommand extends Command
             return self::SUCCESS;
         }
 
-        $polls->runDayPolls($tz);
-        $this->info('Day poll job finished.');
+        $polls->runDayReminders($tz);
+        $this->info('Day reminder job finished.');
 
         return self::SUCCESS;
     }

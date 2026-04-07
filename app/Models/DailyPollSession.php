@@ -12,9 +12,11 @@ class DailyPollSession extends Model
         'poll_date',
         'rocket_room_id',
         'morning_message_id',
+        'day_message_id',
         'fact_id',
         'morning_reminder_sent',
         'day_poll_sent',
+        'day_reminder_sent',
     ];
 
     protected function casts(): array
@@ -23,6 +25,7 @@ class DailyPollSession extends Model
             'poll_date' => 'date',
             'morning_reminder_sent' => 'boolean',
             'day_poll_sent' => 'boolean',
+            'day_reminder_sent' => 'boolean',
         ];
     }
 

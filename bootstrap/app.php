@@ -28,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('bot:day-poll')
             ->dailyAt((string) ($sch['day_poll_at'] ?? '12:30'))
             ->timezone($tz);
+        $schedule->command('bot:day-reminder')
+            ->dailyAt((string) ($sch['day_reminder_at'] ?? '13:30'))
+            ->timezone($tz);
         $schedule->command('bot:export-messages')
             ->dailyAt((string) ($sch['export_at'] ?? '19:00'))
             ->timezone($tz);
