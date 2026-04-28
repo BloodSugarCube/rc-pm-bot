@@ -14,7 +14,7 @@ class ChannelController extends Controller
     {
         if (! filled(config('bot.rocketchat.url'))) {
             return view('admin.channels', [
-                'channels' => PollChannel::query()->orderBy('name')->get(),
+                'channels' => PollChannel::query()->orderByDesc('is_poll_active')->orderBy('name')->get(),
                 'syncError' => 'Задайте ROCKETCHAT_URL в .env.',
             ]);
         }
@@ -25,7 +25,7 @@ class ChannelController extends Controller
             $remote = $rocket->listAllChatRooms();
         } catch (RocketChatException $e) {
             return view('admin.channels', [
-                'channels' => PollChannel::query()->orderBy('name')->get(),
+                'channels' => PollChannel::query()->orderByDesc('is_poll_active')->orderBy('name')->get(),
                 'syncError' => $e->getMessage(),
             ]);
         }
@@ -38,7 +38,7 @@ class ChannelController extends Controller
         }
 
         return view('admin.channels', [
-            'channels' => PollChannel::query()->orderBy('name')->get(),
+            'channels' => PollChannel::query()->orderByDesc('is_poll_active')->orderBy('name')->get(),
             'syncError' => null,
         ]);
     }
@@ -61,6 +61,15 @@ class ChannelController extends Controller
             foreach ($teamTags as $channelId => $value) {
                 PollChannel::query()->where('id', (int) $channelId)->update([
                     'team_tags' => trim((string) $value),
+                ]);
+            }
+        }
+
+        $reminderExcludes = $request->input('reminder_exclude_tags', []);
+        if (is_array($reminderExcludes)) {
+            foreach ($reminderExcludes as $channelId => $value) {
+                PollChannel::query()->where('id', (int) $channelId)->update([
+                    'reminder_exclude_tags' => trim((string) $value),
                 ]);
             }
         }

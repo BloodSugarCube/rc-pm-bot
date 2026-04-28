@@ -40,6 +40,7 @@
             <a href="{{ route('admin.channels') }}">Каналы</a>
             <a href="{{ route('admin.facts') }}">Факты</a>
             <a href="{{ route('admin.schedule-exceptions') }}">Дни исключений</a>
+            <a href="{{ route('admin.absence-periods') }}">Периоды отсутствий</a>
         </nav>
         <form action="{{ route('admin.logout') }}" method="post" class="inline">
             @csrf

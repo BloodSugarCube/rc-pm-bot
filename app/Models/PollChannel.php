@@ -12,7 +12,9 @@ class PollChannel extends Model
         'name',
         'room_type',
         'is_poll_active',
+        'is_day_poll_active',
         'team_tags',
+        'reminder_exclude_tags',
         'last_exported_at',
     ];
 
@@ -20,6 +22,7 @@ class PollChannel extends Model
     {
         return [
             'is_poll_active' => 'boolean',
+            'is_day_poll_active' => 'boolean',
             'last_exported_at' => 'datetime',
         ];
     }
@@ -32,5 +35,10 @@ class PollChannel extends Model
     public function scopePollActive($query)
     {
         return $query->where('is_poll_active', true);
+    }
+
+    public function scopeDayPollActive($query)
+    {
+        return $query->where('is_day_poll_active', true);
     }
 }

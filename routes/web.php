@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\ChannelController;
 use App\Http\Controllers\Admin\FactController;
 use App\Http\Controllers\Admin\PollScheduleExceptionController;
+use App\Http\Controllers\Admin\ReminderAbsencePeriodController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -31,5 +32,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('schedule-exceptions', [PollScheduleExceptionController::class, 'index'])->name('schedule-exceptions');
         Route::post('schedule-exceptions', [PollScheduleExceptionController::class, 'store'])->name('schedule-exceptions.store');
         Route::delete('schedule-exceptions/{pollScheduleException}', [PollScheduleExceptionController::class, 'destroy'])->name('schedule-exceptions.destroy');
+
+        Route::get('absence-periods', [ReminderAbsencePeriodController::class, 'index'])->name('absence-periods');
+        Route::post('absence-periods', [ReminderAbsencePeriodController::class, 'store'])->name('absence-periods.store');
+        Route::delete('absence-periods/{reminderAbsencePeriod}', [ReminderAbsencePeriodController::class, 'destroy'])->name('absence-periods.destroy');
     });
 });

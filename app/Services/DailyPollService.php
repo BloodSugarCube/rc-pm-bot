@@ -8,6 +8,7 @@ use App\Models\DailyPollSession;
 use App\Models\Fact;
 use App\Models\FactUsage;
 use App\Models\PollChannel;
+use App\Models\ReminderAbsencePeriod;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -94,9 +95,9 @@ class DailyPollService
                     continue;
                 }
 
-                $expectedMap = $this->expectedRespondersMapForChannel($channel);
+                $expectedMap = $this->expectedRespondersMapForReminders($channel, $today);
                 if ($expectedMap === []) {
-                    Log::info('Утреннее напоминание пропущено: в канале пусто поле «Теги команд» или не удалось получить участников (teams.members / логины).', [
+                    Log::info('Утреннее напоминание пропущено: нет ожидаемых участников (пустые «Теги команд», нет состава, или все исключены исключениями/периодами отсутствий).', [
                         'channel_id' => $channel->id,
                     ]);
                     $session->update(['morning_reminder_sent' => true]);
@@ -229,6 +230,50 @@ class DailyPollService
         return $map;
     }
 
+    /**
+     * Состав для напоминаний: команды минус постоянные исключения канала и минус глобальные периоды отсутствий на дату.
+     *
+     * @return array<string, string> lowercase username => логин Rocket.Chat
+     */
+    private function expectedRespondersMapForReminders(PollChannel $channel, string $today): array
+    {
+        $map = $this->expectedRespondersMapForChannel($channel);
+
+        foreach ($this->parseReminderExcludeUsernames($channel->reminder_exclude_tags) as $ex) {
+            unset($map[$ex]);
+        }
+
+        foreach (ReminderAbsencePeriod::usernamesAbsentOnDate($today) as $ex) {
+            unset($map[$ex]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Логины из поля «не тегать» (через запятую, как @user1, @user2).
+     *
+     * @return list<string> lowercase
+     */
+    private function parseReminderExcludeUsernames(?string $raw): array
+    {
+        $raw = trim((string) $raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $tokens = preg_split('/\s*,\s*/', $raw) ?: [];
+        $seen = [];
+        foreach ($tokens as $token) {
+            $k = ReminderAbsencePeriod::normalizeUsername((string) $token);
+            if ($k !== '') {
+                $seen[$k] = true;
+            }
+        }
+
+        return array_keys($seen);
+    }
+
     /** Строка тегов для дневного опроса (как в поле канала, через пробел). */
     private function channelTeamTagsLine(PollChannel $channel): string
     {
@@ -308,9 +353,9 @@ class DailyPollService
                     continue;
                 }
 
-                $expectedMap = $this->expectedRespondersMapForChannel($channel);
+                $expectedMap = $this->expectedRespondersMapForReminders($channel, $today);
                 if ($expectedMap === []) {
-                    Log::info('Дневное напоминание пропущено: в канале пусто поле «Теги команд» или не удалось получить участников (teams.members / логины).', [
+                    Log::info('Дневное напоминание пропущено: нет ожидаемых участников (пустые «Теги команд», нет состава, или все исключены исключениями/периодами отсутствий).', [
                         'channel_id' => $channel->id,
                     ]);
                     $session->update(['day_reminder_sent' => true]);
