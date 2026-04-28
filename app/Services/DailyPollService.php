@@ -30,7 +30,7 @@ class DailyPollService
         $today = $this->today($timezone)->toDateString();
         $morningLine = (string) config('bot.poll.morning_text', '@all Что в работе?');
 
-        foreach (PollChannel::query()->pollActive()->dayPollActive()->get() as $channel) {
+        foreach (PollChannel::query()->pollActive()->get() as $channel) {
             try {
                 if (DailyPollSession::query()->where('poll_channel_id', $channel->id)->where('poll_date', $today)->exists()) {
                     continue;
@@ -83,7 +83,7 @@ class DailyPollService
         $today = $this->today($timezone)->toDateString();
         $botId = $this->rocket->getBotRocketUserId();
 
-        foreach (PollChannel::query()->pollActive()->dayPollActive()->get() as $channel) {
+        foreach (PollChannel::query()->pollActive()->get() as $channel) {
             try {
                 $session = DailyPollSession::query()
                     ->where('poll_channel_id', $channel->id)
@@ -299,7 +299,7 @@ class DailyPollService
         $today = $this->today($timezone)->toDateString();
         $dayLine = (string) config('bot.poll.day_text', '@all Что в работе?');
 
-        foreach (PollChannel::query()->pollActive()->get() as $channel) {
+        foreach (PollChannel::query()->pollActive()->dayPollActive()->get() as $channel) {
             try {
                 $session = DailyPollSession::query()
                     ->where('poll_channel_id', $channel->id)
@@ -339,7 +339,7 @@ class DailyPollService
         $today = $this->today($timezone)->toDateString();
         $botId = $this->rocket->getBotRocketUserId();
 
-        foreach (PollChannel::query()->pollActive()->get() as $channel) {
+        foreach (PollChannel::query()->pollActive()->dayPollActive()->get() as $channel) {
             try {
                 $session = DailyPollSession::query()
                     ->where('poll_channel_id', $channel->id)
