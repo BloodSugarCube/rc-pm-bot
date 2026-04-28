@@ -51,9 +51,20 @@ class ChannelController extends Controller
         }
         $ids = array_map('intval', $ids);
 
+        $dayIds = $request->input('day_active', []);
+        if (! is_array($dayIds)) {
+            $dayIds = [];
+        }
+        $dayIds = array_map('intval', $dayIds);
+
         PollChannel::query()->update(['is_poll_active' => false]);
         if ($ids !== []) {
             PollChannel::query()->whereIn('id', $ids)->update(['is_poll_active' => true]);
+        }
+
+        PollChannel::query()->update(['is_day_poll_active' => false]);
+        if ($dayIds !== []) {
+            PollChannel::query()->whereIn('id', $dayIds)->update(['is_day_poll_active' => true]);
         }
 
         $teamTags = $request->input('team_tags', []);
