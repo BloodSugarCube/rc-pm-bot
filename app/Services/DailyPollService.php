@@ -28,10 +28,15 @@ class DailyPollService
     public function runMorningPolls(string $timezone): void
     {
         $today = $this->today($timezone)->toDateString();
+        $now = Carbon::now($timezone);
         $morningLine = (string) config('bot.poll.morning_text', '@all Что в работе?');
 
         foreach (PollChannel::query()->pollActive()->get() as $channel) {
             try {
+                if (! $channel->shouldSendPollOn($now, $timezone)) {
+                    continue;
+                }
+
                 if (DailyPollSession::query()->where('poll_channel_id', $channel->id)->where('poll_date', $today)->exists()) {
                     continue;
                 }
@@ -40,13 +45,12 @@ class DailyPollService
                 $usedFactIds = FactUsage::query()->where('usage_year', $year)->pluck('fact_id');
                 $fact = Fact::query()->where('is_active', true)->whereNotIn('id', $usedFactIds)->inRandomOrder()->first();
 
-                if (! $fact) {
-                    Log::warning('Morning poll skipped: no unused facts this year', ['channel' => $channel->id]);
-
-                    continue;
+                if ($fact) {
+                    $body = $morningLine."\n".$fact->body;
+                } else {
+                    Log::warning('Morning poll: no unused facts this year — sending without fact', ['channel' => $channel->id]);
+                    $body = $morningLine;
                 }
-
-                $body = $morningLine."\n".$fact->body;
                 $msg = $this->rocket->sendMessage($channel->rocket_room_id, $body);
 
                 $mid = (string) ($msg['_id'] ?? '');
@@ -60,14 +64,16 @@ class DailyPollService
                         'poll_date' => $today,
                         'rocket_room_id' => $channel->rocket_room_id,
                         'morning_message_id' => $mid,
-                        'fact_id' => $fact->id,
+                        'fact_id' => $fact?->id,
                     ]);
 
-                    FactUsage::query()->create([
-                        'fact_id' => $fact->id,
-                        'usage_year' => $year,
-                        'used_at' => now(),
-                    ]);
+                    if ($fact) {
+                        FactUsage::query()->create([
+                            'fact_id' => $fact->id,
+                            'usage_year' => $year,
+                            'used_at' => now(),
+                        ]);
+                    }
                 });
             } catch (\Throwable $e) {
                 Log::error('Morning poll failed', [
@@ -81,10 +87,15 @@ class DailyPollService
     public function runMorningReminders(string $timezone): void
     {
         $today = $this->today($timezone)->toDateString();
+        $now = Carbon::now($timezone);
         $botId = $this->rocket->getBotRocketUserId();
 
         foreach (PollChannel::query()->pollActive()->get() as $channel) {
             try {
+                if (! $channel->shouldSendPollOn($now, $timezone)) {
+                    continue;
+                }
+
                 $session = DailyPollSession::query()
                     ->where('poll_channel_id', $channel->id)
                     ->where('poll_date', $today)
@@ -178,8 +189,9 @@ class DailyPollService
     }
 
     /**
-     * Ожидаемые ответы в треде по полю канала «Теги команд»: Rocket.Chat Teams (teams.members),
-     * при пустом ответе API токен трактуется как логин пользователя.
+     * Ожидаемые ответы в треде по полю канала «Теги команд». Поддерживаются:
+     *  - теги Rocket.Chat Teams (@developers → teams.members);
+     *  - логины отдельных пользователей (@aleksandrbelyaev → users.info).
      *
      * @return array<string, string> lowercase username => логин Rocket.Chat
      */
@@ -207,12 +219,7 @@ class DailyPollService
             }
 
             if (! array_key_exists($tagKey, $resolvedByTag)) {
-                $fromRc = $this->rocket->getTeamMembersUsernames($withAt);
-                if ($fromRc === []) {
-                    $resolvedByTag[$tagKey] = [ltrim($token, '@')];
-                } else {
-                    $resolvedByTag[$tagKey] = $fromRc;
-                }
+                $resolvedByTag[$tagKey] = $this->resolveTokenUsernames($withAt, $token);
             }
 
             foreach ($resolvedByTag[$tagKey] as $username) {
@@ -228,6 +235,31 @@ class DailyPollService
         }
 
         return $map;
+    }
+
+    /**
+     * Резолв одного токена из «Теги команд»: сначала как Rocket.Chat Team (teams.members),
+     * затем как логин пользователя (users.info).
+     *
+     * @return list<string> логины без ведущего @
+     */
+    private function resolveTokenUsernames(string $withAt, string $originalToken): array
+    {
+        $fromRc = $this->rocket->getTeamMembersUsernames($withAt);
+        if ($fromRc !== []) {
+            return $fromRc;
+        }
+
+        // Как team тег не резолвится — проверяем, не логин ли это отдельного пользователя.
+        $asUsername = ltrim(trim($originalToken), '@');
+        $user = $this->rocket->getUserByUsername($asUsername);
+        if ($user !== null) {
+            return [(string) $user['username']];
+        }
+
+        // Ни команды с участниками, ни пользователя: считаем токен логином
+        // (упоминание уйдёт текстом, как раньше).
+        return [$asUsername];
     }
 
     /**
@@ -297,10 +329,15 @@ class DailyPollService
     public function runDayPolls(string $timezone): void
     {
         $today = $this->today($timezone)->toDateString();
+        $now = Carbon::now($timezone);
         $dayLine = (string) config('bot.poll.day_text', '@all Что в работе?');
 
         foreach (PollChannel::query()->pollActive()->dayPollActive()->get() as $channel) {
             try {
+                if (! $channel->shouldSendPollOn($now, $timezone)) {
+                    continue;
+                }
+
                 $session = DailyPollSession::query()
                     ->where('poll_channel_id', $channel->id)
                     ->where('poll_date', $today)
@@ -337,10 +374,15 @@ class DailyPollService
     public function runDayReminders(string $timezone): void
     {
         $today = $this->today($timezone)->toDateString();
+        $now = Carbon::now($timezone);
         $botId = $this->rocket->getBotRocketUserId();
 
         foreach (PollChannel::query()->pollActive()->dayPollActive()->get() as $channel) {
             try {
+                if (! $channel->shouldSendPollOn($now, $timezone)) {
+                    continue;
+                }
+
                 $session = DailyPollSession::query()
                     ->where('poll_channel_id', $channel->id)
                     ->where('poll_date', $today)

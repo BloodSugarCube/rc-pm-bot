@@ -1,58 +1,73 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# RC PM Bot
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Бот ежедневных опросов для **Rocket.Chat** на **Laravel** (PHP 8.3).
 
-## About Laravel
+Утром бот публикует в выбранных комнатах вопрос «Что в работе?» со случайным фактом, в течение дня следит за тредом и тегает тех, кто не ответил, вечером выгружает сообщения активных комнат. Управление — через админ-панель `/admin`.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Возможности
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- **Утренний опрос** (`bot:morning-poll`) — сообщение в канал + случайный факт, не использованный в текущем году. Если фактов нет — опрос всё равно отправляется, просто без факта.
+- **Утреннее напоминание** (`bot:morning-reminder`) — в треде утреннего опроса тегаются те, кто ещё не ответил.
+- **Дневной опрос** (`bot:day-poll`) — повторный вопрос в том же треде.
+- **Дневное напоминание** (`bot:day-reminder`) — теги неответивших после дневного опроса.
+- **Экспорт** (`bot:export-messages`) — выгрузка всех сообщений активных комнат в JSON (`storage/app/exports`).
+- **Админ-панель** `/admin`:
+  - **Каналы** — включение опроса / дневного опроса для комнат, «Теги команд» (теги Rocket.Chat Teams **и** логины отдельных пользователей, например `@developers, @aleksandrbelyaev`), дни отправки (пн–вс; пусто — будние дни), «Не тегать в напоминаниях», «Периоды отсутствий»;
+  - **Факты** — добавление/отключение, защита от повторного использования в течение года;
+  - **Дни исключений** — запрет рассылки на дату или разрешение отправки в выходной;
+  - **Периоды отсутствий** — даты отпусков сотрудников (не тегаются в напоминаниях).
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Архитектура
 
-## Learning Laravel
+Кратко — в [architecture.md](architecture.md).
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Требования
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- PHP >= 8.3, Composer
+- Node.js + npm (сборка ассетов)
+- MySQL 8+ (или SQLite)
+- Rocket.Chat с учётной записью бота (пароль либо Personal Access Token)
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Установка
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+cp .env.example .env          # задать APP_KEY, DB_*, ROCKETCHAT_*, BOT_ADMIN_*
+php artisan key:generate
+php artisan migrate
+npm install && npm run build
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### Переменные окружения (основные)
 
-## Contributing
+| Переменная | Назначение |
+| --- | --- |
+| `ROCKETCHAT_URL` | адрес сервера Rocket.Chat |
+| `ROCKETCHAT_BOT_USERNAME` / `ROCKETCHAT_BOT_PASSWORD` | учётка бота |
+| `ROCKETCHAT_USER_ID` / `ROCKETCHAT_AUTH_TOKEN` | альтернатива паролю — Personal Access Token |
+| `BOT_ADMIN_USERNAME` / `BOT_ADMIN_PASSWORD` | доступ к `/admin` |
+| `BOT_TIMEZONE` | таймзона рассылок (по умолчанию `Europe/Moscow`) |
+| `BOT_MORNING_POLL_TEXT` / `BOT_DAY_POLL_TEXT` | тексты опросов |
+| `BOT_SCHEDULE_*` | время запуска задач (HH:MM) |
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Полную логику разрешённых/запрещённых дней см. в [architecture.md](architecture.md).
 
-## Code of Conduct
+## Запуск
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Задачи расписываются в `bootstrap/app.php` (время — в `config/bot.php`, по умолчанию 07:30 / 09:30 / 12:30 / 13:30 / 19:00). В cron достаточно стандартного планировщика Laravel:
 
-## Security Vulnerabilities
+```cron
+* * * * * cd /path/to/project && php artisan schedule:run >> /dev/null 2>&1
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Обновление на сервере — `./update.sh`.
 
-## License
+## Команды artisan
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+php artisan bot:morning-poll       # утренний опрос
+php artisan bot:morning-reminder   # утреннее напоминание
+php artisan bot:day-poll           # дневной опрос
+php artisan bot:day-reminder       # дневное напоминание
+php artisan bot:export-messages    # экспорт сообщений активных комнат
+```

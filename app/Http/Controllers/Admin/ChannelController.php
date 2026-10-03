@@ -85,6 +85,41 @@ class ChannelController extends Controller
             }
         }
 
+        $this->savePollDays($request);
+
         return redirect()->route('admin.channels')->with('status', 'Сохранено.');
+    }
+
+    /**
+     * Дни отправки по каналам. Пустой multi-select не отправляется браузером,
+     * поэтому каждая строка формы несёт скрытый маркер poll_days_present[].
+     */
+    private function savePollDays(Request $request): void
+    {
+        $present = $request->input('poll_days_present', []);
+        if (! is_array($present)) {
+            return;
+        }
+
+        $allDays = $request->input('poll_days', []);
+        if (! is_array($allDays)) {
+            $allDays = [];
+        }
+
+        foreach ($present as $channelId) {
+            $channelId = (int) $channelId;
+            $raw = $allDays[$channelId] ?? [];
+            $raw = is_array($raw) ? $raw : [$raw];
+
+            $days = array_values(array_unique(array_filter(
+                array_map('intval', $raw),
+                fn ($d): bool => $d >= 1 && $d <= 7,
+            )));
+            sort($days);
+
+            PollChannel::query()->where('id', $channelId)->update([
+                'poll_days' => $days !== [] ? $days : null,
+            ]);
+        }
     }
 }
